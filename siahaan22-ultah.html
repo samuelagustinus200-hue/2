@@ -330,24 +330,27 @@ select.gen-input{appearance:none;-webkit-appearance:none;background-image:url("d
 }
 .gal-track{
   display:flex;
+  width:100%;
   transition:transform .38s cubic-bezier(.4,0,.2,1);
   will-change:transform;
-  touch-action:pan-y pinch-zoom;
 }
 .gal-slide{
+  width:100%;
   min-width:100%;
-  flex-shrink:0;
+  flex:0 0 100%;
   overflow:hidden;
+  box-sizing:border-box;
 }
 .gal-slide img{
   width:100%;
   height:auto;
-  max-height:320px;
+  max-height:300px;
   object-fit:contain;
   object-position:center;
   display:block;
   background:#080018;
   pointer-events:none;
+  -webkit-user-drag:none;
 }
 /* Nav arrows */
 .gal-prev,.gal-next{
@@ -357,7 +360,7 @@ select.gen-input{appearance:none;-webkit-appearance:none;background-image:url("d
   border:1.5px solid rgba(201,168,76,.5);
   color:var(--gold);font-size:1.1rem;font-weight:700;
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:background .2s,transform .2s;
+  cursor:pointer;transition:background .2s;
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
 }
 .gal-prev{left:8px}.gal-next{right:8px}
@@ -1118,8 +1121,7 @@ addEventListener('resize',()=>{
     const track=document.getElementById('galTrack');
     if(track){
       track.style.transition='none';
-      const slideW=track.parentElement?track.parentElement.offsetWidth:window.innerWidth;
-      track.style.transform='translateX('+(-galIdx*slideW)+'px)';
+      track.style.transform='translateX('+(-(galIdx*100))+'%)';
     }
   }
 },{passive:true});
@@ -1748,11 +1750,10 @@ function initGallery(urls){
     const img=document.createElement('img');
     img.alt='Foto '+(i+1);
     img.loading=i===0?'eager':'lazy';
-    img.ondragstart=e=>e.preventDefault();
-    img.style.opacity='0';
-    img.style.transition='opacity .3s';
+    img.draggable=false;
+    img.style.cssText='opacity:0;transition:opacity .3s';
     img.onload=()=>{img.style.opacity='1';};
-    img.onerror=()=>{img.style.opacity='1';};
+    img.onerror=()=>{img.style.opacity='0.3';};
     img.src=url;
     slide.appendChild(img);
     track.appendChild(slide);
@@ -1762,51 +1763,54 @@ function initGallery(urls){
     dots.appendChild(dot);
   });
   if(count) count.textContent='1 / '+galTotal;
-  track.style.transition='none';
-  track.style.transform='translateX(0)';
 
-  // ── SWIPE: pixel-based, reliable ──
-  let tx0=0, tx1=0, dragging=false;
+  // Reset to first slide using %
+  track.style.transition='none';
+  track.style.transform='translateX(0%)';
+
+  // ── SWIPE: % based — always matches slide width perfectly ──
+  let sx=0, sy=0, moved=false, dragging=false;
 
   track.addEventListener('touchstart',e=>{
-    tx0=tx1=e.touches[0].clientX;
-    dragging=true;
+    sx=e.touches[0].clientX;
+    sy=e.touches[0].clientY;
+    moved=false; dragging=true;
     track.style.transition='none';
   },{passive:true});
 
   track.addEventListener('touchmove',e=>{
     if(!dragging) return;
-    tx1=e.touches[0].clientX;
-    const diff=tx1-tx0;
-    const slideW=track.parentElement.offsetWidth;
-    const base=-(galIdx*slideW);
-    // clamp so cant drag past first/last
-    const raw=base+diff;
-    const min=-(galTotal-1)*slideW;
-    const pos=Math.max(min,Math.min(0,raw));
-    track.style.transform='translateX('+pos+'px)';
+    const dx=e.touches[0].clientX - sx;
+    const dy=e.touches[0].clientY - sy;
+    // Only swipe horizontally (not scroll vertically)
+    if(!moved && Math.abs(dy) > Math.abs(dx)) { dragging=false; return; }
+    moved=true;
+    // Convert px offset to % of slide width
+    const slideW=track.offsetWidth/galTotal||track.parentElement.offsetWidth||window.innerWidth;
+    const basePct=-(galIdx*100);
+    const diffPct=(dx/track.parentElement.offsetWidth)*100;
+    const minPct=-((galTotal-1)*100);
+    const pos=Math.max(minPct, Math.min(0, basePct+diffPct));
+    track.style.transform='translateX('+pos+'%)';
   },{passive:true});
 
   track.addEventListener('touchend',e=>{
     if(!dragging) return;
     dragging=false;
-    const diff=tx0-tx1;
+    const dx=sx - e.changedTouches[0].clientX;
     track.style.transition='transform .38s cubic-bezier(.4,0,.2,1)';
-    if(Math.abs(diff)>40){
-      galMove(diff>0?1:-1);
+    if(moved && Math.abs(dx)>40){
+      galMove(dx>0?1:-1);
     } else {
-      // snap back
-      const slideW=track.parentElement.offsetWidth;
-      track.style.transform='translateX('+(-galIdx*slideW)+'px)';
+      track.style.transform='translateX('+(-(galIdx*100))+'%)';
     }
+    moved=false;
   },{passive:true});
 
-  // cancel drag if touch is cancelled
   track.addEventListener('touchcancel',()=>{
-    dragging=false;
+    dragging=false; moved=false;
     track.style.transition='transform .38s cubic-bezier(.4,0,.2,1)';
-    const slideW=track.parentElement.offsetWidth;
-    track.style.transform='translateX('+(-galIdx*slideW)+'px)';
+    track.style.transform='translateX('+(-(galIdx*100))+'%)';
   },{passive:true});
 }
 
@@ -1815,9 +1819,8 @@ function galGo(n){
   galIdx=(n+galTotal)%galTotal;
   const track=document.getElementById('galTrack');
   if(track){
-    const slideW=track.parentElement?track.parentElement.offsetWidth:window.innerWidth;
     track.style.transition='transform .38s cubic-bezier(.4,0,.2,1)';
-    track.style.transform='translateX('+(-galIdx*slideW)+'px)';
+    track.style.transform='translateX('+(-(galIdx*100))+'%)';
   }
   document.querySelectorAll('#galDots .gal-dot').forEach((d,i)=>d.classList.toggle('on',i===galIdx));
   const c=document.getElementById('galCount');
